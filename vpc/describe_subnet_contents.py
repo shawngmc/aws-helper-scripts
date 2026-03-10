@@ -4,9 +4,9 @@ AWS Subnet IP Analyzer
 Breaks down which IP addresses in a subnet are in use and what AWS resource is at each IP.
 
 Usage:
-    python describe_subnet_contents.py --profile <aws_profile> --subnet-id <subnet-id>
-    python describe_subnet_contents.py --profile <aws_profile> --subnet-id <subnet-id> --output json
-    python describe_subnet_contents.py --profile <aws_profile> --subnet-id <subnet-id> --show-free
+    python describe_subnet_contents.py --profile <aws_profile> --subnet-id <subnet-id> --region <region>
+    python describe_subnet_contents.py --profile <aws_profile> --subnet-id <subnet-id> --region <region> --output json
+    python describe_subnet_contents.py --profile <aws_profile> --subnet-id <subnet-id> --region <region> --show-free
 """
 
 import argparse
@@ -18,10 +18,10 @@ from botocore.exceptions import ProfileNotFound, ClientError, NoCredentialsError
 from collections import defaultdict
 
 
-def get_boto3_session(profile: str) -> boto3.Session:
-    """Create a boto3 session using the given AWS profile."""
+def get_boto3_session(profile: str, region: str = None) -> boto3.Session:
+    """Create a boto3 session using the given AWS profile and optional region."""
     try:
-        session = boto3.Session(profile_name=profile)
+        session = boto3.Session(profile_name=profile, region_name=region)
         # Validate credentials exist
         session.client("sts").get_caller_identity()
         return session
@@ -353,13 +353,17 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python describe_subnet_contents.py --profile myprofile --subnet-id subnet-0abc123
-  python describe_subnet_contents.py --profile myprofile --subnet-id subnet-0abc123 --output json
-  python describe_subnet_contents.py --profile myprofile --subnet-id subnet-0abc123 --show-free
+  python describe_subnet_contents.py --profile myprofile --subnet-id subnet-0abc123 --region us-east-1
+  python describe_subnet_contents.py --profile myprofile --subnet-id subnet-0abc123 --region us-east-1 --output json
+  python describe_subnet_contents.py --profile myprofile --subnet-id subnet-0abc123 --region us-east-1 --show-free
         """
     )
     parser.add_argument("--profile", required=True, help="AWS CLI profile name")
     parser.add_argument("--subnet-id", required=True, help="Subnet ID (e.g. subnet-0abc1234)")
+    parser.add_argument(
+        "--region", default=None,
+        help="AWS region (e.g. us-east-1). Falls back to profile/env default if omitted."
+    )
     parser.add_argument(
         "--output", choices=["table", "json"], default="table",
         help="Output format: table (default) or json"
@@ -371,8 +375,9 @@ Examples:
 
     args = parser.parse_args()
 
-    print(f"[*] Connecting with profile '{args.profile}'...")
-    session = get_boto3_session(args.profile)
+    region_note = f" (region: {args.region})" if args.region else " (region: from profile/env)"
+    print(f"[*] Connecting with profile '{args.profile}'{region_note}...")
+    session = get_boto3_session(args.profile, region=args.region)
 
     print(f"[*] Fetching subnet '{args.subnet_id}'...")
     subnet = get_subnet(session, args.subnet_id)
